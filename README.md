@@ -2,7 +2,7 @@
 
 A monitoring framework that aims to be simple, malleable, and scalable.
 
-[![Build Status](https://secure.travis-ci.org/sensu/sensu.png)](https://travis-ci.org/sensu/sensu)
+[![Build Status](https://secure.travis-ci.org/jessekempf/sensu.png)](https://travis-ci.org/jessekempf/sensu)
 
 ## Documentation
   Please refer to the [Sensu Docs](http://docs.sensuapp.org/).
