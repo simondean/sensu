@@ -36,26 +36,26 @@ module Sensu
     end
 
     def process_json(data)
-        check = self.class.load_json(data)
+      check = self.class.load_json(data)
 
-        check[:status] ||= 0
+      check[:status] ||= 0
 
-        self.class.validate_check_data(check)
+      self.class.validate_check_data(check)
 
-        publish_check_data(check)
+      publish_check_data(check)
     end
 
     def publish_check_data(check)
-        payload = {
-          :client => @settings[:client][:name],
-          :check => check.merge(:issued => Time.now.to_i),
-        }
+      payload = {
+        :client => @settings[:client][:name],
+        :check => check.merge(:issued => Time.now.to_i),
+      }
 
-        @logger.info('publishing check result', {
-          :payload => payload
-        })
+      @logger.info('publishing check result', {
+        :payload => payload
+      })
 
-        @transport.publish(:direct, 'results', MultiJson.dump(payload))
+      @transport.publish(:direct, 'results', MultiJson.dump(payload))
     end
 
     def self.load_json(data)
