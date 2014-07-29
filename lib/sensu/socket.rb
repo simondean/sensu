@@ -30,29 +30,39 @@ module Sensu
         @logger.debug('socket received data', {
           :data => data
         })
-        begin
-          check = MultiJson.load(data)
-          check[:issued] = Time.now.to_i
-          check[:status] ||= 0
+        process_json(data)
+        respond('ok')
+      end
+    end
 
-          self.class.validate_check_data(check)
+    def process_json(data)
+        check = self.class.load_json(data)
 
-          payload = {
-            :client => @settings[:client][:name],
-            :check => check
-          }
-          @logger.info('publishing check result', {
-            :payload => payload
-          })
-          @transport.publish(:direct, 'results', MultiJson.dump(payload))
-          respond('ok')
-        rescue MultiJson::ParseError => error
-          @logger.warn('check result must be valid json', {
-            :data => data,
-            :error => error.to_s
-          })
-          respond('invalid')
-        end
+        check[:status] ||= 0
+
+        self.class.validate_check_data(check)
+
+        publish_check_data(check)
+    end
+
+    def publish_check_data(check)
+        payload = {
+          :client => @settings[:client][:name],
+          :check => check.merge(:issued => Time.now.to_i),
+        }
+
+        @logger.info('publishing check result', {
+          :payload => payload
+        })
+
+        @transport.publish(:direct, 'results', MultiJson.dump(payload))
+    end
+
+    def self.load_json(data)
+      begin
+        MultiJson.load(data)
+      rescue MultiJson::ParseError => error
+        fail(DataError, "check result is not valid json: error: #{error.to_s}")
       end
     end
 
