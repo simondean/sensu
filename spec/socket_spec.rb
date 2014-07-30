@@ -3,7 +3,11 @@ require 'json'
 require 'multi_json'
 require 'sensu/socket'
 
+require 'helpers'
+
 describe Sensu::Socket do
+  include Helpers
+
   before(:each) do
     MultiJson.load_options = { :symbolize_keys => true }
   end
@@ -37,14 +41,58 @@ describe Sensu::Socket do
   end
 
   describe '#receive_data' do
+    #
+    # Unit tests
+    #
     it "responds 'invalid' there is a data error detected further in the processing chain" do
-      expect(subject).to receive(:process_data).with(:nonce).and_raise(described_class::DataError, "OH NOES")
+      expect(subject).to receive(:process_data).with('NONCE').and_raise(described_class::DataError, "OH NOES")
       expect(logger).to receive(:warn).with('OH NOES')
       expect(subject).to receive(:respond).with('invalid')
 
-      subject.receive_data(:nonce)
+      subject.receive_data('NONCE')
     end
-  end
+
+    #
+    # Integration tests
+    #
+    it 'allows incremental receipt of data' do
+      payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
+
+      expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
+      expect(subject).to receive(:respond).with('ok')
+      expect(transport).to receive(:publish).with(:direct, 'results', payload.to_json)
+
+      check_report_data.to_json.chars.each_with_index do |char, index|
+        expect(logger).to receive(:debug).with("socket received data", :data => check_report_data.to_json[0..index])
+        subject.receive_data(char)
+      end
+    end
+
+    it 'will give up on receiving data from a client that has stopped sending for too long' do
+      # If this test times out it is because the implementation is incorrect.
+      async_wrapper do
+        EventMachine::start_server('127.0.0.1', 303030, described_class) do |agent_socket|
+          agent_socket.logger = logger
+          agent_socket.settings = settings
+          agent_socket.transport = transport
+
+          expect(agent_socket).to receive(:respond).with('invalid') { async_done }
+        end
+
+        allow(logger).to receive(:debug)
+        expect(logger).to receive(:warn).with(
+          'giving up on data buffer from client',
+          kind_of(Hash)
+        )
+
+        timer(0.1) do
+          EventMachine.connect('127.0.0.1', 303030) do |socket|
+            socket.send_data(%({"partial":))
+          end # EventMachine.connect(...)
+        end # timer
+      end # async_wrapper
+    end # it
+  end # describe
 
   describe '#process_data' do
     it 'detects non-ASCII characters' do
@@ -61,8 +109,6 @@ describe Sensu::Socket do
 
     it 'debug-logs data blobs passing through it' do
       expect(logger).to receive(:debug).with('socket received data', :data => 'a relentless stream of garbage' )
-      expect(subject).to receive_messages(:process_json => 'a relentless stream of garbage', :respond => 'ok')
-
       subject.process_data('a relentless stream of garbage')
     end
   end

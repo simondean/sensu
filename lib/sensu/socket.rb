@@ -5,6 +5,21 @@ module Sensu
 
     attr_accessor :logger, :settings, :transport, :reply
 
+    # How many seconds may elapse between chunks of data coming over the
+    # socket before we give up and decide the client is never going to
+    # send more data.
+    WATCHDOG_DELAY = 0.5
+
+    MODE_ACCEPT = :ACCEPT
+    MODE_REJECT = :REJECT
+
+    def initialize(*)
+      @data_buffer = ''
+      @last_parse_error = nil
+      @watchdog = nil
+      @mode = MODE_ACCEPT
+    end
+
     def respond(data)
       unless @reply == false
         send_data(data)
@@ -12,11 +27,30 @@ module Sensu
     end
 
     def receive_data(data)
+      reset_watchdog if EventMachine.reactor_running?
+
+      return if @mode == MODE_REJECT
+
+      @data_buffer << data
+
       begin
-        process_data(data)
+        process_data(@data_buffer)
       rescue DataError => exception
         @logger.warn(exception.to_s)
         respond('invalid')
+      end
+    end
+
+    def reset_watchdog
+      @watchdog.cancel if @watchdog
+      @watchdog = EventMachine::Timer.new(WATCHDOG_DELAY) do
+        @logger.warn('giving up on data buffer from client', {
+          :data_buffer => @data_buffer,
+          :last_parse_error => @last_parse_error.to_s,
+        })
+        respond('invalid')
+        close_connection_after_writing
+        @mode = MODE_REJECT
       end
     end
 
@@ -30,8 +64,15 @@ module Sensu
         @logger.debug('socket received data', {
           :data => data
         })
-        process_json(data)
-        respond('ok')
+
+        begin
+          MultiJson.load(data, :symbolize_keys => false)
+        rescue MultiJson::ParseError => error
+          @last_parse_error = error
+        else
+          process_json(data)
+          respond('ok')
+        end
       end
     end
 
