@@ -10,7 +10,17 @@ module Sensu
     # send more data.
     WATCHDOG_DELAY = 0.5
 
+    #
+    # Sensu::Socket operating mode enum.
+    #
+
+    # ACCEPT mode. We append chunks of data to a running buffer and
+    # test to see whether the buffer contents are valid JSON.
     MODE_ACCEPT = :ACCEPT
+
+    # REJECT mode. We have given up on receiving data. We discard
+    # arriving data in this mode because we are shutting the socket
+    # down.
     MODE_REJECT = :REJECT
 
     def initialize(*)
@@ -44,13 +54,14 @@ module Sensu
     def reset_watchdog
       @watchdog.cancel if @watchdog
       @watchdog = EventMachine::Timer.new(WATCHDOG_DELAY) do
+        @mode = MODE_REJECT
+
         @logger.warn('giving up on data buffer from client', {
           :data_buffer => @data_buffer,
           :last_parse_error => @last_parse_error.to_s,
         })
         respond('invalid')
         close_connection_after_writing
-        @mode = MODE_REJECT
       end
     end
 
