@@ -56,15 +56,46 @@ describe Sensu::Socket do
     # Integration tests
     #
     it 'allows incremental receipt of data' do
-      payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
+      async_wrapper do
+        EventMachine::start_server('127.0.0.1', 303030, described_class) do |agent_socket|
+          agent_socket.logger = logger
+          agent_socket.settings = settings
+          agent_socket.transport = transport
 
-      expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
-      expect(subject).to receive(:respond).with('ok')
-      expect(transport).to receive(:publish).with(:direct, 'results', payload.to_json)
+          expect(agent_socket).to receive(:respond).\
+            with('ok') do
+              after_watchdog_should_have_fired = 1.1 * described_class::WATCHDOG_DELAY
+              timer(after_watchdog_should_have_fired) { async_done}
+            end
+        end
 
-      check_report_data.to_json.chars.each_with_index do |char, index|
-        expect(logger).to receive(:debug).with("socket received data", :data => check_report_data.to_json[0..index])
-        subject.receive_data(char)
+        expect(logger).not_to receive(:warn)
+
+        payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
+
+        expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
+        expect(transport).to receive(:publish).with(:direct, 'results', payload.to_json)
+
+        timer(0.1) do
+          EventMachine.connect('127.0.0.1', 303030) do |socket|
+
+            #
+            # Send data one byte at a time.
+            #
+
+            pending = check_report_data.to_json.chars.each_with_index.to_a
+
+            EventMachine.tick_loop do
+              if pending.empty?
+                :stop
+              else
+                (char, index) = pending.shift
+                expect(logger).to receive(:debug).with("socket received data", { :data => check_report_data.to_json[0..index] })
+                socket.send_data(char)
+              end
+            end
+          end
+        end
       end
     end
 

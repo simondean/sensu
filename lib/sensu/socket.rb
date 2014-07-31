@@ -82,6 +82,7 @@ module Sensu
           @last_parse_error = error
         else
           process_json(data)
+          @watchdog.cancel if @watchdog
           respond('ok')
         end
       end
