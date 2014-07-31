@@ -57,7 +57,7 @@ describe Sensu::Socket do
     #
     it 'allows incremental receipt of data' do
       async_wrapper do
-        EventMachine::start_server('127.0.0.1', 303030, described_class) do |agent_socket|
+        EventMachine::start_server('127.0.0.1', 303031, described_class) do |agent_socket|
           agent_socket.logger = logger
           agent_socket.settings = settings
           agent_socket.transport = transport
@@ -77,7 +77,7 @@ describe Sensu::Socket do
         expect(transport).to receive(:publish).with(:direct, 'results', payload.to_json)
 
         timer(0.1) do
-          EventMachine.connect('127.0.0.1', 303030) do |socket|
+          EventMachine.connect('127.0.0.1', 303031) do |socket|
 
             #
             # Send data one byte at a time.
