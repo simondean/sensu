@@ -55,7 +55,7 @@ describe Sensu::Socket do
     #
     # Integration tests
     #
-    it 'allows incremental receipt of data' do
+    it 'accepts data as part of an EM socket server' do
       async_wrapper do
         EventMachine::start_server('127.0.0.1', 303031, described_class) do |agent_socket|
           agent_socket.logger = logger
@@ -73,8 +73,13 @@ describe Sensu::Socket do
 
         payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
 
-        expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
-        expect(transport).to receive(:publish).with(:direct, 'results', payload.to_json)
+        expect(logger).to receive(:info).\
+          with('publishing check result', { :payload => payload})
+
+        expect(transport).to receive(:publish).\
+          with(:direct, 'results', kind_of(String)) do |_, _, json_string|
+            expect(MultiJson.load(json_string)).to eq payload
+          end
 
         timer(0.1) do
           EventMachine.connect('127.0.0.1', 303031) do |socket|
@@ -83,15 +88,14 @@ describe Sensu::Socket do
             # Send data one byte at a time.
             #
 
-            pending = check_report_data.to_json.chars.each_with_index.to_a
+            pending = check_report_data.to_json.chars.to_a
 
             EventMachine.tick_loop do
               if pending.empty?
                 :stop
               else
-                (char, index) = pending.shift
-                expect(logger).to receive(:debug).with("socket received data", { :data => check_report_data.to_json[0..index] })
-                socket.send_data(char)
+                expect(logger).to receive(:debug).with("socket received data", kind_of(Hash))
+                socket.send_data(pending.shift)
               end
             end
           end
