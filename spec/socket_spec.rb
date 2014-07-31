@@ -70,6 +70,7 @@ describe Sensu::Socket do
         end
 
         expect(logger).not_to receive(:warn)
+        expect(logger).to receive(:debug).with("socket received data", kind_of(Hash))
 
         payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
 
@@ -94,7 +95,6 @@ describe Sensu::Socket do
               if pending.empty?
                 :stop
               else
-                expect(logger).to receive(:debug).with("socket received data", kind_of(Hash))
                 socket.send_data(pending.shift)
               end
             end
