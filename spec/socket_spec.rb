@@ -70,7 +70,7 @@ describe Sensu::Socket do
         end
 
         expect(logger).not_to receive(:warn)
-        expect(logger).to receive(:debug).with("socket received data", kind_of(Hash))
+        expect(logger).to receive(:debug).with("socket received data", kind_of(Hash)).at_least(:once)
 
         payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
 
