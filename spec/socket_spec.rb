@@ -74,7 +74,7 @@ describe Sensu::Socket do
 
     it 'accepts data as part of an EM socket server' do
       async_wrapper do
-        EventMachine::start_server('127.0.0.1', 303031, described_class) do |agent_socket|
+        EventMachine.start_server('127.0.0.1', 303031, described_class) do |agent_socket|
           agent_socket.logger = logger
           agent_socket.settings = settings
           agent_socket.transport = transport
@@ -84,7 +84,7 @@ describe Sensu::Socket do
               after_watchdog_should_have_fired = 1.1 * described_class::WATCHDOG_DELAY
               timer(after_watchdog_should_have_fired) { async_done}
             end
-        end
+        end # EventMachine::start_server
 
         expect(logger).not_to receive(:warn)
         expect(logger).to receive(:debug).with("socket received data", kind_of(Hash)).at_least(:once)
@@ -113,12 +113,12 @@ describe Sensu::Socket do
                 :stop
               else
                 socket.send_data(pending.shift)
-              end
-            end
-          end
-        end
-      end
-    end
+              end # pending.empty?
+            end # EventMachine.tick_loop
+          end # timer
+        end # EventMachine.connect
+      end # async_wrapper
+    end # it 'accepts data...'
 
     it 'will give up on receiving data from a client that has stopped sending for too long' do
       # If this test times out it is because the implementation is incorrect.
@@ -166,7 +166,7 @@ describe Sensu::Socket do
   end
 
   describe '#process_json' do
-    it 'must be valid json' do
+    it 'requires valid JSON' do
       expect { subject.process_json('a relentless stream of garbage') }.to\
         raise_error(
           described_class::DataError,
@@ -194,44 +194,36 @@ describe Sensu::Socket do
   end
 
   describe '.validate_check_data' do
-    it 'must contain a non-empty check name' do
-      check_report_data.merge!(:name => '')
+    shared_examples_for "a validator" do |description, overlay, error_message|
+      it description do
+        check_report_data.merge!(overlay)
 
-      expect { described_class.validate_check_data(check_report_data) }.to\
-        raise_error(described_class::DataError, "invalid check name: ''")
+        expect { described_class.validate_check_data(check_report_data) }.to\
+          raise_error(described_class::DataError, error_message)
+      end
     end
 
-    it 'must contain an acceptable check name' do
-      check_report_data.merge!(:name => 'o hai')
+    it_should_behave_like 'a validator', 'must contain a non-empty', {:name => ''}, "invalid check name: ''"
+    it_should_behave_like 'a validator', 'must contain an acceptable check name', {:name => 'o hai'}, "invalid check name: 'o hai'"
 
-      expect { described_class.validate_check_data(check_report_data) }.to\
-        raise_error(described_class::DataError, "invalid check name: 'o hai'")
-    end
+    it_should_behave_like 'a validator',
+      'must have check output that is a string',
+      {:output => 1234},
+      'check output must be a String, got Fixnum instead'
 
-    it 'must have check output that is a string' do
-      check_report_data.merge!(:output => 1234)
+    it_should_behave_like 'a validator',
+      'must have an integer status',
+      {:status => '1234'},
+      'check status must be an Integer, got String instead'
 
-      expect { described_class.validate_check_data(check_report_data) }.to\
-        raise_error(described_class::DataError, 'check output must be a String, got Fixnum instead')
-    end
+    it_should_behave_like 'a validator',
+      'must have a status code in the valid range',
+      {:status => -2},
+      'check status must be in {0, 1, 2, 3}, got -2 instead'
 
-    it 'must have an integer status' do
-      check_report_data.merge!(:status => '1234')
-
-      expect { described_class.validate_check_data(check_report_data) }.to\
-        raise_error(described_class::DataError, 'check status must be an Integer, got String instead')
-    end
-
-    it 'must have a status code in the valid range' do
-      check_report_data.merge!(:status => -2)
-
-      expect { described_class.validate_check_data(check_report_data) }.to\
-        raise_error(described_class::DataError, 'check status must be in {0, 1, 2, 3}, got -2 instead')
-
-      check_report_data.merge!(:status => 4)
-
-      expect { described_class.validate_check_data(check_report_data) }.to\
-        raise_error(described_class::DataError, 'check status must be in {0, 1, 2, 3}, got 4 instead')
-    end
+    it_should_behave_like 'a validator',
+      'must have a status code in the valid range',
+      {:status => 4},
+      'check status must be in {0, 1, 2, 3}, got 4 instead'
   end
 end
