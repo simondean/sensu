@@ -55,6 +55,19 @@ describe Sensu::Socket do
     #
     # Integration tests
     #
+    it 'allows incremental receipt of data' do
+      payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
+
+      expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
+      expect(subject).to receive(:respond).with('ok')
+      expect(transport).to receive(:publish).with(:direct, 'results', payload.to_json)
+
+      check_report_data.to_json.chars.each_with_index do |char, index|
+        expect(logger).to receive(:debug).with("socket received data", :data => check_report_data.to_json[0..index])
+        subject.receive_data(char)
+      end
+    end
+
     it 'accepts data as part of an EM socket server' do
       async_wrapper do
         EventMachine::start_server('127.0.0.1', 303031, described_class) do |agent_socket|
