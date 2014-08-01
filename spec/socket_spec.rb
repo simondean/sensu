@@ -60,7 +60,11 @@ describe Sensu::Socket do
 
       expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
       expect(subject).to receive(:respond).with('ok')
-      expect(transport).to receive(:publish).with(:direct, 'results', payload.to_json)
+
+      expect(transport).to receive(:publish).\
+        with(:direct, 'results', kind_of(String)) do |_, _, json_string|
+          expect(MultiJson.load(json_string)).to eq payload
+        end
 
       check_report_data.to_json.chars.each_with_index do |char, index|
         expect(logger).to receive(:debug).with("socket received data", :data => check_report_data.to_json[0..index])
