@@ -108,14 +108,18 @@ module Sensu
 
         # See if we've got a complete JSON blob. If we do, forward it on. If we don't, store
         # the exception so the watchdog can log it if it fires.
+        check = nil
+
         begin
-          MultiJson.load(data, :symbolize_keys => false)
+          check = MultiJson.load(data, :symbolize_keys => false)
         rescue MultiJson::ParseError => error
           @last_parse_error = error
         else
-          process_json(data)
-          @watchdog.cancel if @watchdog
-          respond('ok')
+          if check.class == 'Hash'
+            process_json(data)
+            @watchdog.cancel if @watchdog
+            respond('ok')
+          end
         end
       end
     end
