@@ -102,10 +102,6 @@ module Sensu
       else
         @data_buffer << data
 
-        @logger.debug('socket received data', {
-          :data => data
-        })
-
         # See if we've got a complete JSON blob. If we do, forward it on. If we don't, store
         # the exception so the watchdog can log it if it fires.
         last_character = data[-1, 1]
