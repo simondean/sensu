@@ -100,11 +100,15 @@ module Sensu
         @logger.debug('socket received ping')
         respond('pong')
       else
+        @logger.debug('socket received data', {
+          :data => data
+        })
+
         @data_buffer << data
 
         # See if we've got a complete JSON blob. If we do, forward it on. If we don't, store
         # the exception so the watchdog can log it if it fires.
-        last_character = data[-1, 1]
+        last_character = get_last_character(data)
 
         if last_character != '}'
           @last_parse_error = "Expected last character in data to be '{' but actually was " +
@@ -130,6 +134,10 @@ module Sensu
           end
         end
       end
+    end
+
+    def get_last_character(data)
+      data[data.length - 1]
     end
 
     # Process a complete JSON structure.

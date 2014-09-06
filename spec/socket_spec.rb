@@ -67,7 +67,7 @@ describe Sensu::Socket do
         end
 
       check_report_data.to_json.chars.each_with_index do |char, index|
-        expect(logger).to receive(:debug).with("socket received data", :data => check_report_data.to_json[0..index])
+        expect(logger).to receive(:debug).with("socket received data", :data => check_report_data.to_json[index])
         subject.receive_data(char)
       end
     end
@@ -168,14 +168,14 @@ describe Sensu::Socket do
   describe '#process_json' do
     it 'rejects invalid check results' do
       invalid_check_result = check_report_data.merge(:status => 24601)
-      expect { subject.process_json(invalid_check_result.to_json) }.to raise_error(described_class::DataError)
+      expect { subject.process_json(invalid_check_result) }.to raise_error(described_class::DataError)
     end
 
     it 'publishes valid check results' do
       expect(described_class).to receive(:validate_check_data).with(check_report_data)
       expect(subject).to receive(:publish_check_data).with(check_report_data)
 
-      subject.process_json(check_report_data.to_json)
+      subject.process_json(check_report_data)
     end
   end
 
