@@ -8,10 +8,6 @@ require 'helpers'
 describe Sensu::Socket do
   include Helpers
 
-  before(:each) do
-    MultiJson.load_options = { :symbolize_keys => true }
-  end
-
   subject { described_class.new(nil) }
 
   let(:logger) { double('Logger') }
