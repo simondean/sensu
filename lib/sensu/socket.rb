@@ -111,7 +111,7 @@ module Sensu
         last_character = get_last_character(data)
 
         if last_character != '}'
-          @last_parse_error = "Expected last character in data to be '{' but actually was " +
+          @last_parse_error = "Expected last character in data to be '}' but actually was " +
               "'#{last_character}' so not attempted to parse data as JSON"
         else
           check = nil
@@ -137,7 +137,7 @@ module Sensu
     end
 
     def get_last_character(data)
-      data[data.length - 1]
+      data[data.length - 1, 1]
     end
 
     # Process a complete JSON structure.
