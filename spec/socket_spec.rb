@@ -37,100 +37,12 @@ describe Sensu::Socket do
   end
 
   describe '#receive_data' do
-    #
-    # Unit tests
-    #
     it "responds 'invalid' there is a data error detected further in the processing chain" do
       expect(subject).to receive(:process_data).with('example-data').and_raise(described_class::DataError, "Example data error")
       expect(logger).to receive(:warn).with('Example data error')
       expect(subject).to receive(:respond).with('invalid')
 
       subject.receive_data('example-data')
-    end
-
-    #
-    # Integration tests
-    #
-    it 'allows incremental receipt of data' do
-      payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
-
-      expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
-      expect(subject).to receive(:respond).with('ok')
-
-      expect(transport).to receive(:publish).with(:direct, 'results', kind_of(String)) do |_, _, json_string|
-        expect(MultiJson.load(json_string)).to eq payload
-      end
-
-      check_report_data.to_json.chars.each_with_index do |char, index|
-        expect(logger).to receive(:debug).with("socket received data", :data => char)
-        subject.receive_data(char)
-      end
-    end
-
-    it 'accepts data as part of an EM socket server' do
-      async_wrapper do
-        EventMachine.start_server('127.0.0.1', 303031, described_class) do |agent_socket|
-          agent_socket.logger = logger
-          agent_socket.settings = settings
-          agent_socket.transport = transport
-
-          expect(agent_socket).to receive(:respond).with('ok') do
-            after_watchdog_should_have_fired = 1.1 * described_class::WATCHDOG_DELAY
-            timer(after_watchdog_should_have_fired) { async_done}
-          end
-        end
-
-        expect(logger).not_to receive(:warn)
-        expect(logger).to receive(:debug).with("socket received data", kind_of(Hash)).at_least(:once)
-
-        payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
-
-        expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
-
-        expect(transport).to receive(:publish).with(:direct, 'results', kind_of(String)) do |_, _, json_string|
-          expect(MultiJson.load(json_string)).to eq payload
-        end
-
-        timer(0.1) do
-          EventMachine.connect('127.0.0.1', 303031) do |socket|
-            pending = check_report_data.to_json.chars.to_a
-
-            EventMachine.tick_loop do
-              if pending.empty?
-                :stop
-              else
-                # Send data one byte at a time.
-                socket.send_data(pending.shift)
-              end
-            end
-          end
-        end
-      end
-    end
-
-    it 'will give up on receiving data from a client that has stopped sending for too long' do
-      # If this test times out it is because the implementation is incorrect.
-      async_wrapper do
-        EventMachine::start_server('127.0.0.1', 303030, described_class) do |agent_socket|
-          agent_socket.logger = logger
-          agent_socket.settings = settings
-          agent_socket.transport = transport
-
-          expect(agent_socket).to receive(:respond).with('invalid') { async_done }
-        end
-
-        allow(logger).to receive(:debug)
-        expect(logger).to receive(:warn).with(
-          'giving up on data buffer from client',
-          kind_of(Hash)
-        )
-
-        timer(0.1) do
-          EventMachine.connect('127.0.0.1', 303030) do |socket|
-            socket.send_data(%({"partial":))
-          end
-        end
-      end
     end
   end
 
@@ -214,5 +126,87 @@ describe Sensu::Socket do
       'must have a status code in the valid range',
       {:status => 4},
       'check status must be in {0, 1, 2, 3}, got 4 instead'
+  end
+
+  it 'allows incremental receipt of data' do
+    payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
+
+    expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
+    expect(subject).to receive(:respond).with('ok')
+
+    expect(transport).to receive(:publish).with(:direct, 'results', kind_of(String)) do |_, _, json_string|
+      expect(MultiJson.load(json_string)).to eq payload
+    end
+
+    check_report_data.to_json.chars.each_with_index do |char, index|
+      expect(logger).to receive(:debug).with("socket received data", :data => char)
+      subject.receive_data(char)
+    end
+  end
+
+  it 'accepts data as part of an EM socket server' do
+    async_wrapper do
+      EventMachine.start_server('127.0.0.1', 303031, described_class) do |agent_socket|
+        agent_socket.logger = logger
+        agent_socket.settings = settings
+        agent_socket.transport = transport
+
+        expect(agent_socket).to receive(:respond).with('ok') do
+          after_watchdog_should_have_fired = 1.1 * described_class::WATCHDOG_DELAY
+          timer(after_watchdog_should_have_fired) { async_done}
+        end
+      end
+
+      expect(logger).not_to receive(:warn)
+      expect(logger).to receive(:debug).with("socket received data", kind_of(Hash)).at_least(:once)
+
+      payload = { :client => 'example_client_name', :check => check_report_data.merge(:issued => 1234) }
+
+      expect(logger).to receive(:info).with('publishing check result', { :payload => payload})
+
+      expect(transport).to receive(:publish).with(:direct, 'results', kind_of(String)) do |_, _, json_string|
+        expect(MultiJson.load(json_string)).to eq payload
+      end
+
+      timer(0.1) do
+        EventMachine.connect('127.0.0.1', 303031) do |socket|
+          pending = check_report_data.to_json.chars.to_a
+
+          EventMachine.tick_loop do
+            if pending.empty?
+              :stop
+            else
+              # Send data one byte at a time.
+              socket.send_data(pending.shift)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  it 'will give up on receiving data from a client that has stopped sending for too long' do
+    # If this test times out it is because the implementation is incorrect.
+    async_wrapper do
+      EventMachine::start_server('127.0.0.1', 303030, described_class) do |agent_socket|
+        agent_socket.logger = logger
+        agent_socket.settings = settings
+        agent_socket.transport = transport
+
+        expect(agent_socket).to receive(:respond).with('invalid') { async_done }
+      end
+
+      allow(logger).to receive(:debug)
+      expect(logger).to receive(:warn).with(
+        'giving up on data buffer from client',
+        kind_of(Hash)
+      )
+
+      timer(0.1) do
+        EventMachine.connect('127.0.0.1', 303030) do |socket|
+          socket.send_data(%({"partial":))
+        end
+      end
+    end
   end
 end
