@@ -37,6 +37,13 @@ describe Sensu::Socket do
   end
 
   describe '#receive_data' do
+    it 'passes the data to #process_data' do
+      expect(subject).to receive(:process_data).with('example-data-1').ordered
+      expect(subject).to receive(:process_data).with('example-data-2').ordered
+      subject.receive_data('example-data-1')
+      subject.receive_data('example-data-2')
+    end
+
     it "responds 'invalid' there is a data error detected further in the processing chain" do
       expect(subject).to receive(:process_data).with('example-data').and_raise(described_class::DataError, "Example data error")
       expect(logger).to receive(:warn).with('Example data error')
@@ -52,10 +59,19 @@ describe Sensu::Socket do
     end
 
     it 'responds to a `ping`' do
-      expect(logger).to receive_messages(:debug => 'socket received ping')
-      expect(subject).to receive_messages(:respond => 'pong')
+      expect(logger).to receive(:debug).with('socket received ping')
+      expect(subject).to receive(:respond).with('pong')
 
       subject.process_data('  ping  ')
+    end
+
+    it 'does not respond to a `ping` split over more than one chunk' do
+      expect(logger).to receive(:debug).with('socket received data', {:data => 'pi'})
+      expect(logger).to receive(:debug).with('socket received data', {:data => 'ng'})
+      expect(subject).to_not receive(:respond)
+
+      subject.process_data('pi')
+      subject.process_data('ng')
     end
 
     it 'debug-logs data blobs passing through it' do
@@ -199,12 +215,43 @@ describe Sensu::Socket do
       allow(logger).to receive(:debug)
       expect(logger).to receive(:warn).with(
         'giving up on data buffer from client',
-        kind_of(Hash)
+        {
+          :data_buffer => "{\"partial\":",
+          :last_parse_error => "Expected last character in data to be '}' but actually was ':' so not attempted to parse data as JSON"
+        }
       )
 
       timer(0.1) do
         EventMachine.connect('127.0.0.1', 303030) do |socket|
           socket.send_data(%({"partial":))
+        end
+      end
+    end
+  end
+
+  it 'will truncate long debug messages' do
+    # If this test times out it is because the implementation is incorrect.
+    async_wrapper do
+      EventMachine::start_server('127.0.0.1', 303030, described_class) do |agent_socket|
+        agent_socket.logger = logger
+        agent_socket.settings = settings
+        agent_socket.transport = transport
+
+        expect(agent_socket).to receive(:respond).with('invalid') { async_done }
+      end
+
+      allow(logger).to receive(:debug)
+      expect(logger).to receive(:warn).with(
+        'giving up on data buffer from client',
+        {
+          :data_buffer => "#{'A' * 100}...#{'A' * 99}}",
+          :last_parse_error => "784: unexpected token at '#{'A' * 74}...#{'A' * 98}}'"
+        }
+      )
+
+      timer(0.1) do
+        EventMachine.connect('127.0.0.1', 303030) do |socket|
+          socket.send_data("#{'A' * 1000}}")
         end
       end
     end

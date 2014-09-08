@@ -183,7 +183,7 @@ module Sensu
 
     def truncate_text(text)
       if text.length > 1000
-        text = "#{text[0..100]}...#{text[-100..-1]}"
+        text = "#{text[0..99]}...#{text[-100..-1]}"
       end
 
       text
