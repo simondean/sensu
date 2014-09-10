@@ -105,6 +105,18 @@ describe Sensu::Socket do
     end
   end
 
+  describe '#truncate_text' do
+    it 'does not truncate text 1,000 characters long or less' do
+      text = subject.truncate_text('A' * 1000)
+      expect(text).to eq('A' * 1000)
+    end
+
+    it 'truncates text over 1,000 characters long' do
+      text = subject.truncate_text('A' * 1001)
+      expect(text).to eq("#{'A' * 100}...#{'A' * 100}")
+    end
+  end
+
   describe '.validate_check_data' do
     shared_examples_for "a validator" do |description, overlay, error_message|
       it description do
@@ -241,11 +253,14 @@ describe Sensu::Socket do
       end
 
       allow(logger).to receive(:debug)
+      expect(MultiJson).to receive(:load).with("#{'A' * 1000}}") do
+        raise MultiJson::ParseError, 'B' * 1001
+      end
       expect(logger).to receive(:warn).with(
         'giving up on data buffer from client',
         {
           :data_buffer => "#{'A' * 100}...#{'A' * 99}}",
-          :last_parse_error => "784: unexpected token at '#{'A' * 74}...#{'A' * 98}}'"
+          :last_parse_error => "#{'B' * 100}...#{'B' * 100}"
         }
       )
 
