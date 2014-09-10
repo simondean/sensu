@@ -78,6 +78,13 @@ describe Sensu::Socket do
       expect(logger).to receive(:debug).with('socket received data', :data => 'a relentless stream of garbage' )
       subject.process_data('a relentless stream of garbage')
     end
+
+    it 'processes the data when complete' do
+      expect(logger).to receive(:debug).with('socket received data', {:data => check_report_data.to_json})
+      expect(subject).to receive(:process_json).with(check_report_data)
+      expect(subject).to receive(:respond).with('ok')
+      subject.process_data(check_report_data.to_json)
+    end
   end
 
   describe '#process_json' do
