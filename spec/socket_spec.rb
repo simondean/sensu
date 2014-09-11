@@ -85,6 +85,33 @@ describe Sensu::Socket do
       expect(subject).to receive(:respond).with('ok')
       subject.process_data(check_report_data.to_json)
     end
+
+    it 'processes the data when complete, even when the data ends with whitespace' do
+      expect(logger).to receive(:debug).with('socket received data', {:data => "#{check_report_data.to_json} \t\r\n"})
+      expect(subject).to receive(:process_json).with(check_report_data)
+      expect(subject).to receive(:respond).with('ok')
+      subject.process_data("#{check_report_data.to_json} \t\r\n")
+    end
+  end
+
+  describe '#get_last_character' do
+    it 'gets the last character' do
+      text = 'AAAB'
+      last_character = subject.get_last_character(text)
+      expect(last_character).to eq('B')
+    end
+
+    it 'gets the last non-whitespace character when the text ends with whitespace' do
+      text = "AAAB \t\r\n"
+      last_character = subject.get_last_character(text)
+      expect(last_character).to eq('B')
+    end
+
+    it 'returns nil when the text only contains whitespace' do
+      text = " \t\r\n"
+      last_character = subject.get_last_character(text)
+      expect(last_character).to be_nil
+    end
   end
 
   describe '#process_json' do

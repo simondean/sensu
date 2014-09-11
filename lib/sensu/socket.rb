@@ -137,7 +137,12 @@ module Sensu
     end
 
     def get_last_character(data)
-      data[data.length - 1, 1]
+      index = data.length - 1
+      whilespace = " \t\r\n"
+
+      index -= 1 while index >= 0 && whilespace.include?(data[index, 1])
+
+      (index < 0) ? nil : data[index, 1]
     end
 
     # Process a complete JSON structure.
