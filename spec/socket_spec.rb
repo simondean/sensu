@@ -294,35 +294,4 @@ describe Sensu::Socket do
       end
     end
   end
-
-  it 'will truncate long debug messages' do
-    # If this test times out it is because the implementation is incorrect.
-    async_wrapper do
-      EventMachine::start_server('127.0.0.1', 303030, described_class) do |agent_socket|
-        agent_socket.logger = logger
-        agent_socket.settings = settings
-        agent_socket.transport = transport
-
-        expect(agent_socket).to receive(:respond).with('invalid') { async_done }
-      end
-
-      allow(logger).to receive(:debug)
-      expect(MultiJson).to receive(:load).with("#{'A' * 1000}}") do
-        raise MultiJson::ParseError, 'B' * 1001
-      end
-      expect(logger).to receive(:warn).with(
-        'giving up on data buffer from client',
-        {
-          :data_buffer => "#{'A' * 100}...#{'A' * 99}}",
-          :last_parse_error => "#{'B' * 100}...#{'B' * 100}"
-        }
-      )
-
-      timer(0.1) do
-        EventMachine.connect('127.0.0.1', 303030) do |socket|
-          socket.send_data("#{'A' * 1000}}")
-        end
-      end
-    end
-  end
 end
