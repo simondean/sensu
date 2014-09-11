@@ -174,16 +174,18 @@ module Sensu
     # Start or reset the watchdog.
     def reset_watchdog
       @watchdog.cancel if @watchdog
-      @watchdog = EventMachine::Timer.new(WATCHDOG_DELAY) do
-        @mode = MODE_REJECT
+      @watchdog = EventMachine::Timer.new(WATCHDOG_DELAY, &method(:reject_data))
+    end
+
+    def reject_data
+      @mode = MODE_REJECT
 
         @logger.warn('giving up on data buffer from client', {
-          :data_buffer => truncate_text(@data_buffer),
-          :last_parse_error => truncate_text(@last_parse_error),
-        })
-        respond('invalid')
-        close_connection_after_writing
-      end
+        :data_buffer => truncate_text(@data_buffer),
+        :last_parse_error => truncate_text(@last_parse_error),
+      })
+      respond('invalid')
+      close_connection_after_writing
     end
 
     def truncate_text(text)

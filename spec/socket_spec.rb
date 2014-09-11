@@ -139,6 +139,26 @@ describe Sensu::Socket do
     end
   end
 
+  describe '#reject_data' do
+    it 'responds with invalid message' do
+      subject.instance_variable_set(:@data_buffer, 'example-data')
+      subject.instance_variable_set(:@last_parse_error, 'example-parse-error')
+      expect(logger).to receive(:warn).with('giving up on data buffer from client', {:data_buffer => 'example-data', :last_parse_error => 'example-parse-error'})
+      expect(subject).to receive(:respond).with('invalid')
+      expect(subject).to receive(:close_connection_after_writing)
+      subject.reject_data
+    end
+
+    it 'truncates excessively long text the warning log message' do
+      subject.instance_variable_set(:@data_buffer, 'A' * 1001)
+      subject.instance_variable_set(:@last_parse_error, 'B' * 1001)
+      expect(logger).to receive(:warn).with('giving up on data buffer from client', {:data_buffer => "#{'A' * 100}...#{'A' * 100}", :last_parse_error => "#{'B' * 100}...#{'B' * 100}"})
+      expect(subject).to receive(:respond).with('invalid')
+      expect(subject).to receive(:close_connection_after_writing)
+      subject.reject_data
+    end
+  end
+
   describe '#truncate_text' do
     it 'does not truncate text 1,000 characters long or less' do
       text = subject.truncate_text('A' * 1000)
