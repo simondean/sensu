@@ -82,10 +82,8 @@ module Sensu
 
       return if @mode == MODE_REJECT
 
-      @data_buffer << data
-
       begin
-        process_data(@data_buffer)
+        process_data(data)
       rescue DataError => exception
         @logger.warn(exception.to_s)
         respond('invalid')
@@ -98,7 +96,7 @@ module Sensu
     def process_data(data)
       if data.bytes.find { |char| char > 0x80 }
         fail(DataError, 'socket received non-ascii characters')
-      elsif data.strip == 'ping'
+      elsif @data_buffer.length == 0 && data.strip == 'ping'
         @logger.debug('socket received ping')
         respond('pong')
       else
@@ -106,26 +104,51 @@ module Sensu
           :data => data
         })
 
+        @data_buffer << data
+
         # See if we've got a complete JSON blob. If we do, forward it on. If we don't, store
         # the exception so the watchdog can log it if it fires.
-        begin
-          MultiJson.load(data, :symbolize_keys => false)
-        rescue MultiJson::ParseError => error
-          @last_parse_error = error
+        last_character = get_last_character(data)
+
+        if last_character != '}'
+          @last_parse_error = "Expected last character in data to be '}' but actually was " +
+              "'#{last_character}' so not attempted to parse data as JSON"
         else
-          process_json(data)
-          @watchdog.cancel if @watchdog
-          respond('ok')
+          check = nil
+
+          begin
+            check = MultiJson.load(@data_buffer)
+          rescue MultiJson::ParseError => error
+            @last_parse_error = error.to_s
+          else
+            check_class = check.class.to_s
+
+            if check_class != 'Hash'
+              @last_parse_error = "Expected data to parse as JSON 'Hash' but actually parsed " +
+                  "as '#{check_class}'"
+            else
+              process_json(check)
+              @watchdog.cancel if @watchdog
+              respond('ok')
+            end
+          end
         end
       end
+    end
+
+    def get_last_character(data)
+      index = data.length - 1
+      whilespace = " \t\r\n"
+
+      index -= 1 while index >= 0 && whilespace.include?(data[index, 1])
+
+      (index < 0) ? nil : data[index, 1]
     end
 
     # Process a complete JSON structure.
     # @param [String] data a parseable blob of JSON.
     # @raise [DataError] if +data+ describes an invalid check result.
-    def process_json(data)
-      check = MultiJson.load(data)
-
+    def process_json(check)
       check[:status] ||= 0
 
       self.class.validate_check_data(check)
@@ -151,16 +174,26 @@ module Sensu
     # Start or reset the watchdog.
     def reset_watchdog
       @watchdog.cancel if @watchdog
-      @watchdog = EventMachine::Timer.new(WATCHDOG_DELAY) do
-        @mode = MODE_REJECT
+      @watchdog = EventMachine::Timer.new(WATCHDOG_DELAY, &method(:reject_data))
+    end
+
+    def reject_data
+      @mode = MODE_REJECT
 
         @logger.warn('giving up on data buffer from client', {
-          :data_buffer => @data_buffer,
-          :last_parse_error => @last_parse_error.to_s,
-        })
-        respond('invalid')
-        close_connection_after_writing
+        :data_buffer => truncate_text(@data_buffer),
+        :last_parse_error => truncate_text(@last_parse_error),
+      })
+      respond('invalid')
+      close_connection_after_writing
+    end
+
+    def truncate_text(text)
+      if text.length > 1000
+        text = "#{text[0..99]}...#{text[-100..-1]}"
       end
+
+      text
     end
 
     # Validate the given check is well-formed.
